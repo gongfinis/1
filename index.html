@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>实时协作拍立得爱心拼贴</title>
+  <style>
+    :root {
+      --bg: #0b0b10;
+      --panel: rgba(22, 22, 32, 0.9);
+      --text: #f2f2f5;
+      --muted: #a2a2b3;
+      --accent: #d77cff;
+      --ok: #29c881;
+      --warn: #ffb84d;
+      --card-w: 118px;
+      --card-h: 142px;
+      --photo-w: 102px;
+      --photo-h: 102px;
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: radial-gradient(circle at 50% 20%, #171724 0%, var(--bg) 45%, #040406 100%);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    #app {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      background: linear-gradient(180deg, rgba(30, 30, 44, 0.92), rgba(18, 18, 28, 0.92));
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(8px);
+      position: relative;
+      z-index: 20;
+    }
+
+    .btn,
+    .file-btn,
+    .pill {
+      appearance: none;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      line-height: 1;
+    }
+
+    .btn:hover,
+    .file-btn:hover,
+    .pill:hover {
+      border-color: rgba(215, 124, 255, 0.8);
+      box-shadow: 0 0 0 2px rgba(215, 124, 255, 0.18);
+      transform: translateY(-1px);
+    }
+
+    .file-btn input {
+      display: none;
+    }
+
+    .pill {
+      cursor: default;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 10px;
+      font-size: 13px;
+      color: #ddd;
+    }
+
+    #statusDot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--warn);
+      box-shadow: 0 0 0 2px rgba(255, 184, 77, 0.25);
+    }
+
+    #statusText {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .room-link {
+      min-width: 220px;
+      max-width: 360px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      cursor: text;
+      user-select: text;
+    }
+
+    .spacer {
+      flex: 1;
+    }
+
+    .tips {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+      white-space: nowrap;
+    }
+
+    #viewport {
+      position: relative;
+      overflow: hidden;
+      touch-action: none;
+      background:
+        radial-gradient(circle at 50% 70%, rgba(168, 78, 255, 0.12), transparent 35%),
+        radial-gradient(circle at 50% 86%, rgba(255, 186, 255, 0.08), transparent 42%);
+    }
+
+    #stage {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      transform-origin: 0 0;
+      will-change: transform;
+    }
+
+    .card {
+      position: absolute;
+      width: var(--card-w);
+      height: var(--card-h);
+      background: #fff;
+      border-radius: 3px;
+      padding: 8px;
+      padding-bottom: 24px;
+      box-shadow:
+        0 8px 18px rgba(0, 0, 0, 0.45),
+        0 2px 5px rgba(0, 0, 0, 0.25);
+      transform-origin: center center;
+      cursor: grab;
+      will-change: transform;
+    }
+
+    .card:active {
+      cursor: grabbing;
+    }
+
+    .card img {
+      display: block;
+      width: var(--photo-w);
+      height: var(--photo-h);
+      object-fit: cover;
+      border-radius: 1px;
+      pointer-events: none;
+      -webkit-user-drag: none;
+      user-drag: none;
+    }
+
+    .card::after {
+      content: "";
+      position: absolute;
+      left: 10px;
+      right: 10px;
+      bottom: 10px;
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.06);
+    }
+
+    .empty {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      pointer-events: none;
+      color: rgba(255, 255, 255, 0.52);
+      text-align: center;
+      font-size: 16px;
+      line-height: 1.8;
+      letter-spacing: 0.3px;
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+      z-index: 2;
+    }
+
+    .badge {
+      font-size: 13px;
+      color: #d9d9e6;
+      opacity: 0.9;
+      padding: 0 4px;
+    }
+
+    @media (max-width: 960px) {
+      .tips {
+        width: 100%;
+        white-space: normal;
+      }
+      .room-link {
+        max-width: 200px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="toolbar">
+      <label class="file-btn">
+        上传照片（最多60张）
+        <input id="fileInput" type="file" accept="image/*" multiple />
+      </label>
+      <button class="btn" id="shuffleBtn">随机重排</button>
+      <button class="btn" id="fitBtn">重置视图</button>
+      <button class="btn" id="exportBtn">导出 PNG</button>
+      <button class="btn" id="clearBtn">清空</button>
+
+      <span class="badge" id="countText">0 / 60</span>
+      <span class="pill"><span id="statusDot"></span><span id="statusText">连接中...</span></span>
+      <span class="pill">在线人数：<span id="userCount">0</span></span>
+      <span class="pill room-link" id="roomLinkText"></span>
+      <button class="btn" id="copyLinkBtn">复制房间链接</button>
+
+      <span class="spacer"></span>
+      <div class="tips">滚轮缩放 · 中键平移画布 · 拖拽拍立得同步给同房间用户</div>
+    </div>
+
+    <div id="viewport">
+      <div id="stage"></div>
+      <div class="empty" id="emptyState">上传后将实时同步到同房间用户，并自动保存</div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const MAX_FILES = 60;
+      const CARD_W = 118;
+      const CARD_H = 142;
+
+      const viewport = document.getElementById("viewport");
+      const stage = document.getElementById("stage");
+      const fileInput = document.getElementById("fileInput");
+      const emptyState = document.getElementById("emptyState");
+      const countText = document.getElementById("countText");
+      const userCountEl = document.getElementById("userCount");
+      const statusTextEl = document.getElementById("statusText");
+      const statusDotEl = document.getElementById("statusDot");
+      const roomLinkTextEl = document.getElementById("roomLinkText");
+      const copyLinkBtn = document.getElementById("copyLinkBtn");
+
+      const shuffleBtn = document.getElementById("shuffleBtn");
+      const fitBtn = document.getElementById("fitBtn");
+      const exportBtn = document.getElementById("exportBtn");
+      const clearBtn = document.getElementById("clearBtn");
+
+      let ws = null;
+      let reconnectTimer = null;
+      let reconnectDelay = 1000;
+
+      let zCounter = 100;
+      let view = { scale: 1, tx: 0, ty: 0 };
+      let pan = null;
+
+      const photos = new Map(); // id -> {id,url,name}
+      const cards = new Map(); // id -> cardObject
+
+      const clientId = crypto.randomUUID();
+      const roomId = getOrCreateRoomId();
+      const roomUrl = `${location.origin}${location.pathname}?room=${roomId}`;
+      roomLinkTextEl.textContent = roomUrl;
+
+      copyLinkBtn.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(roomUrl);
+          copyLinkBtn.textContent = "已复制";
+          setTimeout(() => (copyLinkBtn.textContent = "复制房间链接"), 1200);
+        } catch {
+          alert("复制失败，请手动复制地址栏链接");
+        }
+      });
+
+      function getOrCreateRoomId() {
+        const u = new URL(location.href);
+        let rid = u.searchParams.get("room");
+        if (!rid || !/^[a-zA-Z0-9_-]{3,64}$/.test(rid)) {
+          rid = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+          u.searchParams.set("room", rid);
+          history.replaceState({}, "", u.toString());
+        }
+        return rid;
+      }
+
+      function rand(min, max) {
+        return Math.random() * (max - min) + min;
+      }
+
+      function heartX(t) {
+        return 16 * Math.pow(Math.sin(t), 3);
+      }
+
+      function heartY(t) {
+        return 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+      }
+
+      function shuffleArray(arr) {
+        for (let i = arr.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+      }
+
+      function setViewTransform() {
+        stage.style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`;
+      }
+
+      function resetView() {
+        view.scale = 1;
+        view.tx = 0;
+        view.ty = 0;
+        setViewTransform();
+      }
+
+      function setStatus(text, connected) {
+        statusTextEl.textContent = text;
+        statusDotEl.style.background = connected ? "var(--ok)" : "var(--warn)";
+        statusDotEl.style.boxShadow = connected
+          ? "0 0 0 2px rgba(41, 200, 129, 0.25)"
+          : "0 0 0 2px rgba(255, 184, 77, 0.25)";
+      }
+
+      function updateCount() {
+        countText.textContent = `${photos.size} / ${MAX_FILES}`;
+      }
+
+      function clearStageElements() {
+        for (const c of cards.values()) {
+          c.el.remove();
+        }
+        cards.clear();
+      }
+
+      function createHeartPoints(n) {
+        const w = viewport.clientWidth;
+        const h = viewport.clientHeight;
+        const cx = w / 2;
+        const cy = h / 2 + Math.min(65, h * 0.08);
+        const scale = Math.min(w, h) / 42;
+
+        const points = [];
+        for (let i = 0; i < n; i++) {
+          const t = (i / n) * Math.PI * 2;
+          const x = heartX(t) * scale;
+          const y = -heartY(t) * scale;
+
+          points.push({
+            x: cx + x + rand(-22, 22),
+            y: cy + y + rand(-18, 18)
+          });
+        }
+
+        const minGap = Math.max(30, CARD_W * (0.55 - Math.min(n / MAX_FILES, 1) * 0.15));
+        for (let round = 0; round < 3; round++) {
+          for (let i = 0; i < points.length; i++) {
+            for (let j = i + 1; j < points.length; j++) {
+              const dx = points[j].x - points[i].x;
+              const dy = points[j].y - points[i].y;
+              const dist = Math.sqrt(dx * dx + dy * dy) || 0.001;
+              if (dist < minGap) {
+                const push = (minGap - dist) * 0.33;
+                const ux = dx / dist;
+                const uy = dy / dist;
+                points[i].x -= ux * push;
+                points[i].y -= uy * push;
+                points[j].x += ux * push;
+                points[j].y += uy * push;
+              }
+            }
+          }
+        }
+        return points;
+      }
+
+      function applyCardTransform(card) {
+        card.el.style.transform = `translate(${card.x}px, ${card.y}px) rotate(${card.rot}deg)`;
+        card.el.style.zIndex = String(card.z);
+      }
+
+      function send(payload) {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+        ws.send(JSON.stringify(payload));
+        return true;
+      }
+
+      function ensureOpenConnection() {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          alert("当前未连接服务器，稍后会自动重连");
+          return false;
+        }
+        return true;
+      }
+
+      function bindCardDrag(card) {
+        const el = card.el;
+        let drag = null;
+        let lastSent = 0;
+
+        el.addEventListener("pointerdown", (e) => {
+          if (e.button !== 0) return;
+          e.preventDefault();
+          e.stopPropagation();
+          if (!ensureOpenConnection()) return;
+
+          el.setPointerCapture(e.pointerId);
+          card.z = ++zCounter;
+          applyCardTransform(card);
+
+          drag = {
+            pointerId: e.pointerId,
+            startX: e.clientX,
+            startY: e.clientY,
+            originX: card.x,
+            originY: card.y
+          };
+        });
+
+        el.addEventListener("pointermove", (e) => {
+          if (!drag || drag.pointerId !== e.pointerId) return;
+
+          const dx = (e.clientX - drag.startX) / view.scale;
+          const dy = (e.clientY - drag.startY) / view.scale;
+          card.x = drag.originX + dx;
+          card.y = drag.originY + dy;
+          applyCardTransform(card);
+
+          const now = performance.now();
+          if (now - lastSent > 50) {
+            lastSent = now;
+            send({ type: "card:move", id: card.id, x: card.x, y: card.y, rot: card.rot, z: card.z });
+          }
+        });
+
+        function endDrag(e) {
+          if (!drag || drag.pointerId !== e.pointerId) return;
+          drag = null;
+          el.releasePointerCapture(e.pointerId);
+          send({ type: "card:move", id: card.id, x: card.x, y: card.y, rot: card.rot, z: card.z });
+        }
+
+        el.addEventListener("pointerup", endDrag);
+        el.addEventListener("pointercancel", endDrag);
+      }
+
+      function createCard(photo, cardData) {
+        const existing = cards.get(photo.id);
+        if (existing) {
+          existing.x = cardData.x;
+          existing.y = cardData.y;
+          existing.rot = cardData.rot;
+          existing.z = cardData.z;
+          applyCardTransform(existing);
+          return;
+        }
+
+        const cardEl = document.createElement("div");
+        cardEl.className = "card";
+
+        const imgEl = document.createElement("img");
+        imgEl.src = photo.url;
+        cardEl.appendChild(imgEl);
+        stage.appendChild(cardEl);
+
+        const card = {
+          id: photo.id,
+          el: cardEl,
+          imgEl,
+          x: cardData.x,
+          y: cardData.y,
+          rot: cardData.rot,
+          z: cardData.z
+        };
+
+        applyCardTransform(card);
+        bindCardDrag(card);
+        cards.set(photo.id, card);
+        zCounter = Math.max(zCounter, card.z);
+      }
+
+      function rebuildFromState(serverPhotos, serverCards) {
+        photos.clear();
+        clearStageElements();
+
+        for (const p of serverPhotos) {
+          photos.set(p.id, p);
+        }
+
+        const sortedCards = [...serverCards].sort((a, b) => (a.z || 0) - (b.z || 0));
+        for (const c of sortedCards) {
+          const p = photos.get(c.id);
+          if (!p) continue;
+          createCard(p, {
+            x: Number(c.x) || 0,
+            y: Number(c.y) || 0,
+            rot: Number(c.rot) || 0,
+            z: Number(c.z) || 1
+          });
+        }
+
+        updateCount();
+        emptyState.style.display = photos.size ? "none" : "grid";
+      }
+
+      function getNextCardPlacement(nextCount) {
+        const points = createHeartPoints(nextCount);
+        const p = points[nextCount - 1] || { x: viewport.clientWidth / 2, y: viewport.clientHeight / 2 };
+        return {
+          x: p.x - CARD_W / 2,
+          y: p.y - CARD_H / 2,
+          rot: rand(-15, 15),
+          z: zCounter + 1
+        };
+      }
+
+      function readImageFile(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const img = new Image();
+            img.onload = () => {
+              const maxEdge = 900;
+              const ratio = Math.min(1, maxEdge / Math.max(img.naturalWidth, img.naturalHeight));
+              const w = Math.round(img.naturalWidth * ratio);
+              const h = Math.round(img.naturalHeight * ratio);
+
+              const c = document.createElement("canvas");
+              c.width = w;
+              c.height = h;
+              const cctx = c.getContext("2d");
+              cctx.imageSmoothingEnabled = true;
+              cctx.imageSmoothingQuality = "high";
+              cctx.drawImage(img, 0, 0, w, h);
+
+              resolve({
+                dataUrl: c.toDataURL("image/jpeg", 0.9),
+                name: file.name
+              });
+            };
+            img.onerror = reject;
+            img.src = reader.result;
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      }
+
+      async function handleFiles(fileList) {
+        if (!ensureOpenConnection()) return;
+
+        const list = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
+        if (!list.length) return;
+
+        const remaining = MAX_FILES - photos.size;
+        if (remaining <= 0) {
+          alert("最多只能上传 60 张照片");
+          return;
+        }
+
+        const selected = list.slice(0, remaining);
+        if (list.length > remaining) {
+          alert(`最多只能上传 60 张，已截取前 ${remaining} 张`);
+        }
+
+        for (const f of selected) {
+          try {
+            const imgObj = await readImageFile(f);
+            const placement = getNextCardPlacement(photos.size + 1);
+            send({
+              type: "photo:add",
+              dataUrl: imgObj.dataUrl,
+              name: imgObj.name,
+              card: placement
+            });
+          } catch (err) {
+            console.warn("读取图片失败:", f.name, err);
+          }
+        }
+      }
+
+      function exportPNG() {
+        if (!cards.size) {
+          alert("请先上传照片");
+          return;
+        }
+
+        const w = viewport.clientWidth;
+        const h = viewport.clientHeight;
+        const scale = 2;
+
+        const c = document.createElement("canvas");
+        c.width = Math.round(w * scale);
+        c.height = Math.round(h * scale);
+
+        const ctx = c.getContext("2d");
+        ctx.scale(scale, scale);
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+
+        const bg = ctx.createRadialGradient(w / 2, h * 0.2, 10, w / 2, h, Math.max(w, h));
+        bg.addColorStop(0, "#171724");
+        bg.addColorStop(0.45, "#0b0b10");
+        bg.addColorStop(1, "#040406");
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, w, h);
+
+        const ordered = [...cards.values()].sort((a, b) => (a.z || 0) - (b.z || 0));
+
+        ctx.save();
+        ctx.translate(view.tx, view.ty);
+        ctx.scale(view.scale, view.scale);
+
+        for (const card of ordered) {
+          const rad = (card.rot * Math.PI) / 180;
+
+          ctx.save();
+          ctx.translate(card.x + CARD_W / 2, card.y + CARD_H / 2);
+          ctx.rotate(rad);
+          ctx.translate(-CARD_W / 2, -CARD_H / 2);
+
+          ctx.fillStyle = "#fff";
+          ctx.shadowColor = "rgba(0,0,0,0.35)";
+          ctx.shadowBlur = 14;
+          ctx.shadowOffsetY = 6;
+          ctx.fillRect(0, 0, CARD_W, CARD_H);
+
+          ctx.shadowColor = "transparent";
+          ctx.drawImage(card.imgEl, 8, 8, 102, 102);
+
+          ctx.fillStyle = "rgba(0,0,0,0.06)";
+          ctx.fillRect(10, 132, 98, 5);
+
+          ctx.restore();
+        }
+
+        ctx.restore();
+
+        c.toBlob((blob) => {
+          if (!blob) return;
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `heart-polaroid-collab-${Date.now()}.png`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+        }, "image/png");
+      }
+
+      function applyBatch(cardsPatch) {
+        for (const c of cardsPatch) {
+          const local = cards.get(c.id);
+          if (!local) continue;
+          local.x = Number(c.x) || 0;
+          local.y = Number(c.y) || 0;
+          local.rot = Number(c.rot) || 0;
+          local.z = Number(c.z) || 1;
+          applyCardTransform(local);
+          zCounter = Math.max(zCounter, local.z);
+        }
+      }
+
+      function connect() {
+        const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+        ws = new WebSocket(`${protocol}//${location.host}`);
+        setStatus("连接中...", false);
+
+        ws.onopen = () => {
+          reconnectDelay = 1000;
+          setStatus("已连接", true);
+          send({ type: "join", roomId, clientId });
+        };
+
+        ws.onmessage = (ev) => {
+          let msg;
+          try {
+            msg = JSON.parse(ev.data);
+          } catch {
+            return;
+          }
+
+          if (msg.type === "room:state") {
+            rebuildFromState(msg.photos || [], msg.cards || []);
+            return;
+          }
+
+          if (msg.type === "photo:added") {
+            const p = msg.photo;
+            const c = msg.card;
+            if (!p || !c) return;
+            photos.set(p.id, p);
+            createCard(p, c);
+            updateCount();
+            emptyState.style.display = photos.size ? "none" : "grid";
+            return;
+          }
+
+          if (msg.type === "card:moved") {
+            const card = cards.get(msg.id);
+            if (!card) return;
+            card.x = Number(msg.x) || card.x;
+            card.y = Number(msg.y) || card.y;
+            card.rot = Number(msg.rot) || card.rot;
+            card.z = Number(msg.z) || card.z;
+            applyCardTransform(card);
+            zCounter = Math.max(zCounter, card.z);
+            return;
+          }
+
+          if (msg.type === "card:batched") {
+            applyBatch(msg.cards || []);
+            return;
+          }
+
+          if (msg.type === "cleared") {
+            photos.clear();
+            clearStageElements();
+            updateCount();
+            emptyState.style.display = "grid";
+            return;
+          }
+
+          if (msg.type === "user:count") {
+            userCountEl.textContent = String(msg.count || 0);
+            return;
+          }
+
+          if (msg.type === "error") {
+            alert(msg.message || "发生错误");
+            return;
+          }
+        };
+
+        ws.onclose = () => {
+          setStatus(`重连中 ${Math.round(reconnectDelay / 1000)}s...`, false);
+          clearTimeout(reconnectTimer);
+          reconnectTimer = setTimeout(connect, reconnectDelay);
+          reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+        };
+
+        ws.onerror = () => {
+          setStatus("连接异常", false);
+        };
+      }
+
+      fileInput.addEventListener("change", async (e) => {
+        await handleFiles(e.target.files);
+        fileInput.value = "";
+      });
+
+      shuffleBtn.addEventListener("click", () => {
+        if (!cards.size) return;
+        if (!ensureOpenConnection()) return;
+
+        const ids = [...cards.keys()];
+        shuffleArray(ids);
+        const points = createHeartPoints(ids.length);
+
+        const patch = [];
+        ids.forEach((id, i) => {
+          const card = cards.get(id);
+          if (!card) return;
+          const p = points[i];
+          card.x = p.x - CARD_W / 2;
+          card.y = p.y - CARD_H / 2;
+          card.rot = rand(-15, 15);
+          card.z = i + 1;
+          applyCardTransform(card);
+          patch.push({ id, x: card.x, y: card.y, rot: card.rot, z: card.z });
+        });
+
+        zCounter = patch.length + 100;
+        send({ type: "card:batch", cards: patch });
+      });
+
+      fitBtn.addEventListener("click", () => {
+        resetView();
+      });
+
+      clearBtn.addEventListener("click", () => {
+        if (!cards.size) return;
+        if (!ensureOpenConnection()) return;
+        send({ type: "clear" });
+      });
+
+      exportBtn.addEventListener("click", exportPNG);
+
+      viewport.addEventListener(
+        "wheel",
+        (e) => {
+          e.preventDefault();
+
+          const oldScale = view.scale;
+          const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+          const nextScale = Math.max(0.3, Math.min(3, oldScale * factor));
+          if (nextScale === oldScale) return;
+
+          const rect = viewport.getBoundingClientRect();
+          const mx = e.clientX - rect.left;
+          const my = e.clientY - rect.top;
+
+          const worldX = (mx - view.tx) / oldScale;
+          const worldY = (my - view.ty) / oldScale;
+
+          view.scale = nextScale;
+          view.tx = mx - worldX * nextScale;
+          view.ty = my - worldY * nextScale;
+          setViewTransform();
+        },
+        { passive: false }
+      );
+
+      viewport.addEventListener("pointerdown", (e) => {
+        if (e.button !== 1) return;
+        e.preventDefault();
+        pan = {
+          pointerId: e.pointerId,
+          sx: e.clientX,
+          sy: e.clientY,
+          ox: view.tx,
+          oy: view.ty
+        };
+        viewport.setPointerCapture(e.pointerId);
+      });
+
+      viewport.addEventListener("pointermove", (e) => {
+        if (!pan || pan.pointerId !== e.pointerId) return;
+        const dx = e.clientX - pan.sx;
+        const dy = e.clientY - pan.sy;
+        view.tx = pan.ox + dx;
+        view.ty = pan.oy + dy;
+        setViewTransform();
+      });
+
+      function stopPan(e) {
+        if (!pan || pan.pointerId !== e.pointerId) return;
+        pan = null;
+        viewport.releasePointerCapture(e.pointerId);
+      }
+
+      viewport.addEventListener("pointerup", stopPan);
+      viewport.addEventListener("pointercancel", stopPan);
+
+      window.addEventListener("resize", () => {
+        if (!cards.size) return;
+        const patch = [];
+        const points = createHeartPoints(cards.size);
+        const ids = [...cards.keys()];
+        ids.forEach((id, i) => {
+          const card = cards.get(id);
+          if (!card) return;
+          card.x = points[i].x - CARD_W / 2;
+          card.y = points[i].y - CARD_H / 2;
+          applyCardTransform(card);
+          patch.push({ id, x: card.x, y: card.y, rot: card.rot, z: card.z });
+        });
+        send({ type: "card:batch", cards: patch });
+      });
+
+      updateCount();
+      resetView();
+      connect();
+    })();
+  </script>
+</body>
+</html>

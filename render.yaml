@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: heart-collage-collab
+    env: docker
+    plan: starter
+    autoDeploy: true
+    disk:
+      name: heart-collage-disk
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: DATA_DIR
+        value: /var/data/data
+      - key: UPLOADS_DIR
+        value: /var/data/uploads
